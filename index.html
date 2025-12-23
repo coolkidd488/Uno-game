@@ -1,0 +1,146 @@
+<!DOCTYPE html><html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>UNO em HTML</title>
+<style>
+*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+body{margin:0;background:#0f172a;color:#fff;display:flex;justify-content:center}
+#app{max-width:900px;width:100%;padding:12px}
+.area{background:#020617;border-radius:12px;padding:12px;margin-bottom:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.center{justify-content:center}
+.card{width:60px;height:90px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;cursor:pointer;border:2px solid rgba(255,255,255,.3)}
+.red{background:#ef4444}
+.green{background:#22c55e}
+.blue{background:#3b82f6}
+.yellow{background:#facc15;color:#111}
+.wild{background:linear-gradient(45deg,#ef4444,#3b82f6,#22c55e,#facc15);color:#000}
+button,input{padding:10px 14px;border-radius:10px;border:none;font-weight:bold}
+button{cursor:pointer}
+.hidden{display:none}
+#playersList div{padding:6px 10px;background:#111827;border-radius:8px;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div id="app"><!-- TELA LOGIN --><div id="login" class="area">
+<h2>Seu nome</h2>
+<input id="playerName" placeholder="Digite seu nome" />
+<div class="row center" style="margin-top:10px">
+<button onclick="goMenu()">Continuar</button>
+</div>
+</div><!-- MENU --><div id="menu" class="area hidden">
+<h2>Menu</h2>
+<div class="row center">
+<button onclick="createRoom()">Criar sala</button>
+<button onclick="joinRoom()">Entrar</button>
+</div>
+<input id="roomInput" class="hidden" placeholder="Código da sala" />
+<div class="row center">
+<button id="joinBtn" class="hidden" onclick="confirmJoin()">Entrar na sala</button>
+</div>
+</div><!-- SALA --><div id="room" class="area hidden">
+<h2>Sala <span id="roomCode"></span></h2>
+<div><strong>Jogadores:</strong></div>
+<div id="playersList"></div>
+<div class="row center" style="margin-top:10px">
+<button onclick="startGame()">Iniciar jogo</button>
+</div>
+</div><!-- JOGO --><div id="game" class="area hidden">
+<h2 id="status">Jogo iniciado</h2>
+<div class="row center" id="table"></div>
+<div class="row" id="hand"></div>
+<button onclick="drawCard()">Comprar carta</button>
+</div></div><script>
+let playerName="";
+let roomCode="";
+let players=[];
+let withBot=true;
+
+function goMenu(){
+ const n=document.getElementById('playerName').value.trim();
+ if(!n) return alert('Digite um nome');
+ playerName=n;
+ document.getElementById('login').classList.add('hidden');
+ document.getElementById('menu').classList.remove('hidden');
+}
+
+function createRoom(){
+ roomCode=Math.floor(100000+Math.random()*900000);
+ players=[playerName];
+ withBot=true;
+ document.getElementById('menu').classList.add('hidden');
+ document.getElementById('room').classList.remove('hidden');
+ document.getElementById('roomCode').innerText=roomCode;
+ updatePlayers();
+}
+
+function joinRoom(){
+ document.getElementById('roomInput').classList.remove('hidden');
+ document.getElementById('joinBtn').classList.remove('hidden');
+}
+
+function confirmJoin(){
+ const code=document.getElementById('roomInput').value.trim();
+ if(!code) return;
+ roomCode=code;
+ players=[playerName];
+ withBot=true;
+ document.getElementById('menu').classList.add('hidden');
+ document.getElementById('room').classList.remove('hidden');
+ document.getElementById('roomCode').innerText=roomCode;
+ updatePlayers();
+}
+
+function updatePlayers(){
+ const list=document.getElementById('playersList');
+ list.innerHTML='';
+ players.forEach(p=>{
+  const d=document.createElement('div');
+  d.innerText=p;
+  list.appendChild(d);
+ })
+ if(players.length===1) list.innerHTML+='<div>Bot</div>';
+}
+
+// ===== JOGO SIMPLES (1 jogador + bot) =====
+const colors=['red','blue','green','yellow'];
+const values=['0','1','2','3','4','5','6','7','8','9'];
+let deck=[],hand=[],bot=[],table=[];
+
+function startGame(){
+ document.getElementById('room').classList.add('hidden');
+ document.getElementById('game').classList.remove('hidden');
+ startUNO();
+}
+
+function startUNO(){
+ deck=[];hand=[];bot=[];table=[];
+ for(const c of colors) for(const v of values){deck.push({c,v});deck.push({c,v})}
+ deck.sort(()=>Math.random()-0.5);
+ for(let i=0;i<7;i++){hand.push(deck.pop());bot.push(deck.pop())}
+ table.push(deck.pop());
+ render();
+}
+
+function drawCard(){hand.push(deck.pop());render();setTimeout(botPlay,600)}
+
+function canPlay(c){const t=table[table.length-1];return c.c===t.c||c.v===t.v}
+
+function play(i){const c=hand[i];if(!canPlay(c))return;hand.splice(i,1);table.push(c);render();setTimeout(botPlay,600)}
+
+function botPlay(){
+ const i=bot.findIndex(canPlay);
+ if(i>=0){table.push(bot.splice(i,1)[0])}
+ else bot.push(deck.pop());
+ render();
+}
+
+function render(){
+ const t=document.getElementById('table');t.innerHTML='';
+ const tc=document.createElement('div');tc.className='card '+table.at(-1).c;tc.innerText=table.at(-1).v;t.appendChild(tc);
+ const h=document.getElementById('hand');h.innerHTML='';
+ hand.forEach((c,i)=>{const d=document.createElement('div');d.className='card '+c.c;d.innerText=c.v;d.onclick=()=>play(i);h.appendChild(d)})
+}
+</script></body>
+</html>
