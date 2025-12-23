@@ -1,97 +1,152 @@
-<!DOCTYPE html><html lang="pt-BR">
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>UNO Online – Supabase</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UNO Online</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
-body{margin:0;font-family:Arial;background:#0f172a;color:#fff}
+body{margin:0;font-family:Arial;background:#0f172a;color:#fff;text-align:center}
 .area{background:#020617;margin:10px;padding:12px;border-radius:12px}
-.hidden{display:none}
-button,input{padding:10px;border-radius:10px;border:none;font-weight:bold;margin:4px}
-#players div{background:#111827;padding:6px;border-radius:6px;margin:4px 0}
+.cards{display:flex;gap:8px;overflow-x:auto;justify-content:center}
+.card{
+  min-width:60px;height:90px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:bold;font-size:18px;cursor:pointer
+}
+.red{background:#ef4444}
+.blue{background:#3b82f6}
+.green{background:#22c55e}
+.yellow{background:#eab308;color:#000}
+.black{background:#000}
+button{padding:10px 16px;border-radius:10px;border:none;font-weight:bold;margin:6px}
 </style>
 </head>
-<body><div id="login" class="area">
-  <h2>Seu nome</h2>
-  <input id="name" placeholder="Digite seu nome" />
-  <button onclick="goMenu()">Continuar</button>
-</div><div id="menu" class="area hidden">
-  <button onclick="createRoom()">Criar sala</button>
-  <br />
-  <input id="roomInput" placeholder="Código da sala" />
-  <button onclick="joinRoom()">Entrar</button>
-</div><div id="room" class="area hidden">
-  <h3>Sala: <span id="roomCode"></span></h3>
-  <strong>Jogadores:</strong>
-  <div id="players"></div>
-  <button onclick="startGame()">Iniciar jogo</button>
-</div><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
-// ================= SUPABASE =================
+
+<body>
+
+<div class="area">
+  <h2>UNO</h2>
+  <div>Turno: <span id="turno"></span></div>
+</div>
+
+<div class="area">
+  <h3>Carta da mesa</h3>
+  <div id="mesa" class="cards"></div>
+</div>
+
+<div class="area">
+  <h3>Sua mão</h3>
+  <div id="mao" class="cards"></div>
+</div>
+
+<button onclick="comprar()">Comprar carta</button>
+
+<script>
 const SUPABASE_URL = 'https://ozybsjswoncgkusjeqqm.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_gRKp6oykV2lFFXdWjX1xOw_WpqgKmiX';
+const SUPABASE_KEY = 'SUA_CHAVE_AQUI';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+const playerId = localStorage.pid ||= crypto.randomUUID();
+const room = localStorage.room; // já salvo quando entra na sala
 
-// ================= ELEMENTOS =================
-const login = document.getElementById('login');
-const menu = document.getElementById('menu');
-const room = document.getElementById('room');
-const roomCodeSpan = document.getElementById('roomCode');
+let game = null;
 
-// ================= VARIÁVEIS =================
-let playerName = '';
-let roomCode = '';
-let playerId = Date.now().toString();
+const cores = ["red","blue","green","yellow"];
 
-// ================= FUNÇÕES =================
-function goMenu(){
-  playerName = document.getElementById('name').value.trim();
-  if(!playerName) return alert('Digite um nome');
-  login.classList.add('hidden');
-  menu.classList.remove('hidden');
+function criarBaralho(){
+  const b=[];
+  cores.forEach(c=>{
+    for(let i=0;i<=9;i++) b.push({cor:c,valor:i});
+    b.push({cor:c,valor:"+2"});
+  });
+  b.push({cor:"black",valor:"+4"});
+  return b.sort(()=>Math.random()-0.5);
 }
 
-async function createRoom(){
-  roomCode = Math.floor(100000 + Math.random()*900000).toString();
-  await db.from('rooms').insert({ code: roomCode });
-  await db.from('players').insert({ room: roomCode, name: playerName, pid: playerId });
-  openRoom();
+async function iniciar(){
+  const { data } = await sb.from("game").select("*").eq("room",room).single();
+  if(!data){
+    const baralho = criarBaralho();
+    const state={
+      mesa:baralho.pop(),
+      maos:{
+        [playerId]:baralho.splice(0,7)
+      },
+      baralho
+    };
+    await sb.from("game").insert({room,state,turn:playerId});
+  }
+  ouvir();
 }
 
-async function joinRoom(){
-  roomCode = document.getElementById('roomInput').value.trim();
-  if(!roomCode) return alert('Digite o código da sala');
-  await db.from('players').insert({ room: roomCode, name: playerName, pid: playerId });
-  openRoom();
+function ouvir(){
+  sb.channel("game")
+   .on("postgres_changes",{event:"*",schema:"public",table:"game"},
+   payload=>{
+     if(payload.new.room===room){
+       game=payload.new;
+       render();
+     }
+   }).subscribe();
 }
 
-function openRoom(){
-  menu.classList.add('hidden');
-  room.classList.remove('hidden');
-  roomCodeSpan.innerText = roomCode;
-  loadPlayers();
-}
+function render(){
+  document.getElementById("turno").innerText =
+    game.turn===playerId?"Você":"Outro jogador";
 
-async function loadPlayers(){
-  const { data, error } = await db.from('players').select('*').eq('room', roomCode);
-  if(error) return;
-  const list = document.getElementById('players');
-  list.innerHTML = '';
-  data.forEach(p => {
-    const d = document.createElement('div');
-    d.innerText = p.name;
-    list.appendChild(d);
+  const mesa=document.getElementById("mesa");
+  mesa.innerHTML="";
+  const c=game.state.mesa;
+  mesa.innerHTML=`<div class="card ${c.cor}">${c.valor}</div>`;
+
+  const mao=document.getElementById("mao");
+  mao.innerHTML="";
+  (game.state.maos[playerId]||[]).forEach((c,i)=>{
+    const d=document.createElement("div");
+    d.className=`card ${c.cor}`;
+    d.innerText=c.valor;
+    d.onclick=()=>jogar(i);
+    mao.appendChild(d);
   });
 }
 
-// Atualiza a lista a cada 1 segundo
-setInterval(() => {
-  if(roomCode) loadPlayers();
-}, 1000);
+async function jogar(i){
+  if(game.turn!==playerId) return;
+  const mao=game.state.maos[playerId];
+  const c=mao[i];
+  const mesa=game.state.mesa;
+  if(c.cor!==mesa.cor && c.valor!==mesa.valor && c.cor!=="black") return;
 
-function startGame(){
-  alert('Aqui entra o UNO online completo 😄');
+  mao.splice(i,1);
+  game.state.mesa=c;
+
+  let proximo = Object.keys(game.state.maos).find(p=>p!==playerId);
+  if(c.valor==="+2"){
+    for(let i=0;i<2;i++)
+      game.state.maos[proximo].push(game.state.baralho.pop());
+  }
+  if(c.valor==="+4"){
+    for(let i=0;i<4;i++)
+      game.state.maos[proximo].push(game.state.baralho.pop());
+  }
+
+  await sb.from("game").update({
+    state:game.state,
+    turn:proximo
+  }).eq("room",room);
 }
-</script></body>
+
+async function comprar(){
+  if(game.turn!==playerId) return;
+  game.state.maos[playerId].push(game.state.baralho.pop());
+  await sb.from("game").update({state:game.state}).eq("room",room);
+}
+
+iniciar();
+</script>
+
+</body>
 </html>
